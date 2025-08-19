@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+# Prevent overlapping runs on the same branch/PR
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------- Node.js (backend + frontend) ----------
+  node:
+    name: Node • ${{ matrix.dir }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [ "backend", "frontend" ]   # adjust if you rename folders
+    if: ${{ hashFiles(format('{0}/package.json', matrix.dir)) != '' }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Lint (if script exists)
+        run: npm run lint --if-present
+
+      - name: Run tests (if script exists)
+        run: npm test --if-present
+        env:
+          CI: true
+
+      - name: Build (if script exists)
+        run: npm run build --if-present
+
+      - name: Upload build artifacts (if dist/ exists)
+        if: ${{ hashFiles(format('{0}/dist/**', matrix.dir)) != '' || hashFiles(format('{0}/build/**', matrix.dir)) != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.dir }}-artifact
+          path: |
+            ${{ matrix.dir }}/dist
+            ${{ matrix.dir }}/build
+
+  # ---------- Go microservices (optional) ----------
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('backend/go.mod') != '' || hashFiles('go.mod') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Tidy
+        run: go mod tidy
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./... -v
