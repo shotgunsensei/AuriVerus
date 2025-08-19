@@ -74,6 +74,9 @@ We welcome early contributors!
 
 ---
 
+![CI](https://github.com/<your-username>/AuriVerus/actions/workflows/ci.yml/badge.svg)
+
 <p align="center">  
+  
 ⚡ Built for creators who want an AI that doesn’t just listen – it **finishes**.  
 </p>
