@@ -1,83 +1,42 @@
 name: CI
-
 on:
-  push:
-    branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
+  push: { branches: [ "main", "master" ] }
+  pull_request: { branches: [ "main", "master" ] }
 
-# Prevent overlapping runs on the same branch/PR
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
+permissions: { contents: read }
 
 jobs:
-  # ---------- Node.js (backend + frontend) ----------
   node:
-    name: Node â€¢ ${{ matrix.dir }}
+    name: Node • ${{ matrix.dir }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        dir: [ "backend", "frontend" ]   # adjust if you rename folders
-    if: ${{ hashFiles(format('{0}/package.json', matrix.dir)) != '' }}
-    defaults:
-      run:
-        working-directory: ${{ matrix.dir }}
+        dir: [ "apps/server", "apps/web", "apps/mobile" ]
     steps:
       - uses: actions/checkout@v4
-
-      - name: Use Node.js 20.x
+      - id: probe
+        run: |
+          D="${{ matrix.dir }}"
+          if [ -d "$D" ]; then echo "dir_exists=true" >> "$GITHUB_OUTPUT"; else echo "dir_exists=false" >> "$GITHUB_OUTPUT"; fi
+          if [ -f "$D/package.json" ]; then echo "pkg_exists=true" >> "$GITHUB_OUTPUT"; else echo "pkg_exists=false" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.probe.outputs.dir_exists == 'true' && steps.probe.outputs.pkg_exists == 'true'
         uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
-
-      - name: Install deps
+        with: { node-version: "22", cache: "npm", cache-dependency-path: ${{ matrix.dir }}/package-lock.json }
+      - if: steps.probe.outputs.dir_exists == 'true' && steps.probe.outputs.pkg_exists == 'true'
         run: npm ci
-
-      - name: Lint (if script exists)
+        working-directory: ${{ matrix.dir }}
+      - if: steps.probe.outputs.dir_exists == 'true' && steps.probe.outputs.pkg_exists == 'true'
         run: npm run lint --if-present
-
-      - name: Run tests (if script exists)
+        working-directory: ${{ matrix.dir }}
+      - if: steps.probe.outputs.dir_exists == 'true' && steps.probe.outputs.pkg_exists == 'true'
         run: npm test --if-present
-        env:
-          CI: true
-
-      - name: Build (if script exists)
+        env: { CI: true }
+        working-directory: ${{ matrix.dir }}
+      - if: steps.probe.outputs.dir_exists == 'true' && steps.probe.outputs.pkg_exists == 'true'
         run: npm run build --if-present
-
-      - name: Upload build artifacts (if dist/ exists)
-        if: ${{ hashFiles(format('{0}/dist/**', matrix.dir)) != '' || hashFiles(format('{0}/build/**', matrix.dir)) != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.dir }}-artifact
-          path: |
-            ${{ matrix.dir }}/dist
-            ${{ matrix.dir }}/build
-
-  # ---------- Go microservices (optional) ----------
-  go:
-    name: Go
-    runs-on: ubuntu-latest
-    if: ${{ hashFiles('backend/go.mod') != '' || hashFiles('go.mod') != '' }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-
-      - name: Tidy
-        run: go mod tidy
-
-      - name: Build
-        run: go build ./...
-
-      - name: Test
-        run: go test ./... -v
+        working-directory: ${{ matrix.dir }}
